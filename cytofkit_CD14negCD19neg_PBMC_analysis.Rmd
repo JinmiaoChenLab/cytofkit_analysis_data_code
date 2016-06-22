@@ -1,0 +1,361 @@
+---
+title: "cytofkit CD14negCD19neg PBMC Analysis"
+author: "Hao Chen"
+date: "6 June 2016"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+ 
+## Load the package
+
+```{r}
+require(cytofkit)  ## version >= 1.4.6
+require(ggplot2)
+require(reshape2)
+require(plotly)
+setwd("/Users/chenhao/GitProject/cytofkit_data_codes")  ## change this to your path
+```
+
+## Parameter setting and Data loading
+
+```{r, eval=FALSE}
+dimReductionMethod <- "tsne"
+visualizationMethods <- "tsne"
+clusterMethods <- c("Rphenograph", "ClusterX", "DensVM")
+markers <- as.character(read.table("parameter.txt", header = TRUE)[ ,1])
+
+xdata <- cytof_exprsExtract(fcsFile = "./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-.fcs", 
+                           transformMethod = "autoLgcl",
+                           markers = markers)
+```
+
+
+## Dimensionality reduction
+
+```{r, eval=FALSE}
+ydata <- cytof_dimReduction(data = xdata, method = "tsne")
+```
+
+
+## Cluster anlsysis using method Rphenograph, ClusterX, DensVM  
+
+```{r, eval=FALSE}
+cluster_res <- lapply(clusterMethods, cytof_cluster, 
+                      ydata = ydata,
+                      xdata = xdata)
+names(cluster_res) <- clusterMethods
+```
+
+
+## Rename the clusters according to positions on t-SNE map for comparation.
+
+```{r, eval=FALSE}
+tsne_cluster <- as.data.frame(ydata)
+tsne_cluster$ClusterX <- as.integer(cluster_res[["ClusterX"]])
+tsne_cluster$DensVM <- as.integer(cluster_res[["DensVM"]])
+tsne_cluster$PhenoGraph <- as.integer(cluster_res[["Rphenograph"]])
+
+ClusterX_center <- aggregate(cbind(tsne_1, tsne_2) ~ ClusterX, data = tsne_cluster, median)
+ClusterX_center$ClusterX_label <- rank(-ClusterX_center$tsne_2)
+tsne_cluster$ClusterX <- ClusterX_center$ClusterX_label[match(tsne_cluster$ClusterX, ClusterX_center$ClusterX)]
+
+DensVM_center <- aggregate(cbind(tsne_1, tsne_2) ~ DensVM, data = tsne_cluster, median)
+DensVM_center$DensVM_label <- rank(-DensVM_center$tsne_2)
+tsne_cluster$DensVM <- DensVM_center$DensVM_label[match(tsne_cluster$DensVM, DensVM_center$DensVM)]
+
+PhenoGraph_center <- aggregate(cbind(tsne_1, tsne_2) ~ PhenoGraph, data = tsne_cluster, median)
+PhenoGraph_center$PhenoGraph_label <- rank(-PhenoGraph_center$tsne_2)
+tsne_cluster$PhenoGraph <- PhenoGraph_center$PhenoGraph_label[match(tsne_cluster$PhenoGraph, PhenoGraph_center$PhenoGraph)]
+
+data_tsne_cluster <- cbind(xdata, tsne_cluster)
+```
+
+
+```{r}
+## Sice t-SNE will output different embedding map every time, to reproduce the resutls in 
+## cytofkit paper, we loaded the saved t-SNE and  cluster results from our run.
+data_tsne_cluster <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_exprs_tsne_cluster.csv", header = TRUE, row.names = 1, check.names = FALSE)
+```
+
+
+## Comparison of clustering methods for subset detection
+
+### PhenoGraph cluster plot
+```{r}
+cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "PhenoGraph", sampleLabel = FALSE)
+```
+
+
+### ClusterX cluster plot
+```{r}
+cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "ClusterX", sampleLabel = FALSE)
+```
+
+
+### DensVM cluster plot
+```{r}
+cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "DensVM", sampleLabel = FALSE)
+```
+
+
+## Cluster heatmap plot
+
+### PhenoGraph cluster median heatmap
+```{r}
+cluster_median <- aggregate(. ~ PhenoGraph, data = data_tsne_cluster[,c(1:36,39)], median)
+rownames(cluster_median) <- cluster_median$PhenoGraph
+cluster_median <- subset(cluster_median, select = -PhenoGraph)
+m <- regexpr("\\<.*\\>", colnames(cluster_median), perl = TRUE)
+colnames(cluster_median) <- gsub("<|>", "", regmatches(colnames(cluster_median), m))
+cytof_heatmap(cluster_median, baseName = "Cluster Median", cex_row_label = 1, cex_col_label = 0.8)
+```
+
+
+### ClusterX cluster median heatmap
+```{r}
+cluster_median <- aggregate(. ~ ClusterX, data = data_tsne_cluster[,c(1:36,40)], median)
+rownames(cluster_median) <- cluster_median$ClusterX
+cluster_median <- subset(cluster_median, select = -ClusterX)
+m <- regexpr("\\<.*\\>", colnames(cluster_median), perl = TRUE)
+colnames(cluster_median) <- gsub("<|>", "", regmatches(colnames(cluster_median), m))
+cytof_heatmap(cluster_median, baseName = "Cluster Median", cex_row_label = 1, cex_col_label = 0.8)
+```
+
+
+### DensVM cluster median heatmap
+```{r}
+cluster_median <- aggregate(. ~ DensVM, data = data_tsne_cluster[,c(1:36,41)], median)
+rownames(cluster_median) <- cluster_median$DensVM
+cluster_median <- subset(cluster_median, select = -DensVM)
+m <- regexpr("\\<.*\\>", colnames(cluster_median), perl = TRUE)
+colnames(cluster_median) <- gsub("<|>", "", regmatches(colnames(cluster_median), m))
+cytof_heatmap(cluster_median, baseName = "Cluster Median", cex_row_label = 1, cex_col_label = 0.8)
+```
+
+
+## Assess ISOMAP, diffusion map and t-SNE for inferring inter-cluster relationship
+
+```{r}
+## Loading subsample data
+subData1 <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_subsample1_tsne.csv", header = TRUE, row.names = 1, check.names = FALSE)
+subData2 <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_subsample2_tsne.csv", header = TRUE, row.names = 1, check.names = FALSE)
+subData3 <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_subsample3_tsne.csv", header = TRUE, row.names = 1, check.names = FALSE)
+```
+
+### t-SNE plot
+
+```{r}
+cytof_clusterPlot(subData1, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "cluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+
+cytof_clusterPlot(subData2, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "cluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+
+cytof_clusterPlot(subData3, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "cluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+```
+
+### ISOMAP plot
+
+```{r, cache=TRUE}
+## Loading subsample data
+subData1 <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_subsample1_isomap.csv", header = TRUE, row.names = 1, check.names = FALSE)
+subData2 <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_subsample2_isomap.csv", header = TRUE, row.names = 1, check.names = FALSE)
+subData3 <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_subsample3_isomap.csv", header = TRUE, row.names = 1, check.names = FALSE)
+```
+
+```{r}
+cytof_clusterPlot(subData1, xlab = "isomap_1", ylab = "isomap_2", 
+                  cluster = "cluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+
+cytof_clusterPlot(subData2, xlab = "isomap_1", ylab = "isomap_2", 
+                  cluster = "cluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+
+cytof_clusterPlot(subData3, xlab = "isomap_1", ylab = "isomap_2", 
+                  cluster = "cluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+```
+
+
+### Diffusion map plot
+```{r, cache=TRUE}
+## diffusion map for subsample 1
+dfmap1 <- cytof_progression(data = subData1[ ,1:36], 
+                            method = "diffusionmap",
+                            out_dim = 4,
+                            cluster = subData1[,37],
+                            clusterSampleMethod = "all")
+
+## diffusion map for subsample 2
+dfmap2 <- cytof_progression(data = subData2[ ,1:36], 
+                            method = "diffusionmap",
+                            out_dim = 4,
+                            cluster = subData2[,37],
+                            clusterSampleMethod = "all")
+
+## diffusion map for subsample 3
+dfmap3 <- cytof_progression(data = subData3[ ,1:36], 
+                            method = "diffusionmap",
+                            out_dim = 4,
+                            cluster = subData3[,37],
+                            clusterSampleMethod = "all")
+```
+
+
+
+```{r}
+dfmap1_progression_data <- as.data.frame(do.call(cbind, dfmap1))
+cytof_clusterPlot(dfmap1_progression_data, xlab = "diffusionmap_1", ylab = "diffusionmap_2", 
+                  cluster = "sampleCluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+
+
+dfmap2_progression_data <- as.data.frame(do.call(cbind, dfmap2))
+cytof_clusterPlot(dfmap2_progression_data, xlab = "diffusionmap_1", ylab = "diffusionmap_2", 
+                  cluster = "sampleCluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+
+dfmap3_progression_data <- as.data.frame(do.call(cbind, dfmap3))
+cytof_clusterPlot(dfmap3_progression_data, xlab = "diffusionmap_1", ylab = "diffusionmap_2", 
+                  cluster = "sampleCluster", sampleLabel = FALSE, 
+                  labelSize = 8, fixCoord = FALSE)
+```
+
+
+
+## Progression analysis
+
+```{r, eval=FALSE}
+## load some functions
+isomap_progression <- cytof_progression(data = data_tsne_cluster[ ,1:36], 
+                                        cluster = data_tsne_cluster$ClusterX,
+                                        method = "isomap",
+                                        out_dim = 4,
+                                        clusterSampleMethod = "ceil",
+                                        clusterSampleSize = 500)
+isomap_progression_data <- as.data.frame(do.call(cbind, isomap_progression))
+write.csv(isomap_progression_data, "subset_downsample_500_isomap_progression.csv")
+
+dfmap_progression <- cytof_progression(data = data_tsne_cluster[ ,1:36], 
+                                        method = "diffusionmap",
+                                        out_dim = 4,
+                                        cluster = data_tsne_cluster$ClusterX,
+                                        clusterSampleMethod = "ceil",
+                                        clusterSampleSize = 500)
+
+dfmap_progression_data <- as.data.frame(do.call(cbind, dfmap_progression))
+write.csv(dfmap_progression_data, "subset_downsample_500_diffusionmap_progression.csv")
+```
+
+```{r, echo=FALSE}
+isomap_progression_data <- read.csv("./CD14negCD19negPBMC_dataset/subset_downsample_500_isomap_progression.csv", header = TRUE, row.names = 1, check.names = FALSE)
+
+dfmap_progression_data <- read.csv("./CD14negCD19negPBMC_dataset/subset_downsample_500_diffusionmap_progression.csv", header = TRUE, row.names = 1, check.names = FALSE)
+```
+
+
+### Progression plot
+
+```{r}
+#plot_ly(isomap_progression_data, x = isomap_1, y = isomap_2, z = isomap_3, group = sampleCluster, size = 0.5, type = "scatter3d", mode = "markers")
+
+cytof_clusterPlot(isomap_progression_data, xlab = "isomap_1", ylab = "isomap_2", 
+                  cluster = "sampleCluster", sampleLabel = FALSE, 
+                  labelSize = 15, fixCoord = FALSE)
+
+#plot_ly(dfmap_progression_data, x = diffusionmap_1, y = diffusionmap_2, z = diffusionmap_3, group = sampleCluster, type = "scatter3d", mode = "markers")
+
+cytof_clusterPlot(dfmap_progression_data, xlab = "diffusionmap_1", ylab = "diffusionmap_2", 
+                  cluster = "sampleCluster", sampleLabel = FALSE, 
+                  labelSize = 15, fixCoord = FALSE)
+
+```
+
+
+```{r, echo=FALSE}
+## color plot funciton
+remove_outliers <- function(x, na.rm = TRUE, ...) {
+    qnt <- quantile(x, probs=c(.25, .75), na.rm = na.rm, ...)
+    H <- 1.5 * IQR(x, na.rm = na.rm)
+    y <- x
+    y[x < (qnt[1] - H)] <- qnt[1] - H
+    y[x > (qnt[2] + H)] <- qnt[2] + H
+    y
+}
+
+visuaPlot <- function(data, xlab, ylab, zlab, pointSize=1, 
+                      addLabel=TRUE, labelSize=1, removeOutlier = TRUE){
+    
+    data <- as.data.frame(data)
+    title <- zlab
+    data <- data[,c(xlab, ylab, zlab)]
+    if(removeOutlier)
+        data[,zlab] <- remove_outliers(data[,zlab])
+    zlab <- "Expression"
+    colnames(data) <- c(xlab, ylab, zlab)
+    gp <- ggplot(data, aes_string(x = xlab, y = ylab, colour = zlab)) + 
+        geom_point(size = pointSize, alpha = 1) + theme_bw() +
+        scale_colour_gradient2(low="blue", mid="white", high="red",     midpoint=median(data[[zlab]])) +
+        theme(legend.position = "right") + xlab(xlab) + ylab(ylab) + ggtitle(title) +
+        theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+        theme(axis.text=element_text(size=8), axis.title=element_text(size=12,face="bold"))
+    
+    return(gp)
+}
+```
+
+
+```{r}
+visMarkers <- c("(Sm150)Di<GranzymeB>", "(Yb173)Di<Perforin>")
+
+visuaPlot(isomap_progression_data, xlab = "isomap_1", ylab="isomap_2", 
+          zlab = visMarkers[1], pointSize = 1.5)
+
+visuaPlot(isomap_progression_data, xlab = "isomap_1", ylab="isomap_2", 
+          zlab = visMarkers[2], pointSize = 1.5)
+
+visuaPlot(dfmap_progression_data, xlab = "diffusionmap_1", ylab="diffusionmap_2", 
+          zlab = visMarkers[1], pointSize = 1.5)
+
+visuaPlot(dfmap_progression_data, xlab = "diffusionmap_1", ylab="diffusionmap_2", 
+          zlab = visMarkers[2], pointSize = 1.5)
+
+
+
+cytof_progressionPlot(data=isomap_progression_data, 
+                      markers = visMarkers, 
+                      clusters = c(11, 14, 12, 15, 13), 
+                      orderCol = "isomap_2",
+                      clusterCol = "sampleCluster",
+                      clusterLabelSize = 10,
+                      segmentSize = 1,
+                      reverseOrder = TRUE,
+                      addClusterLabel = TRUE)
+
+
+cytof_progressionPlot(data=dfmap_progression_data, 
+                      markers = visMarkers, 
+                      clusters = c(11, 14, 12, 15, 13), 
+                      orderCol = "diffusionmap_2",
+                      clusterCol = "sampleCluster",
+                      clusterLabelSize = 10,
+                      segmentSize = 1,
+                      reverseOrder = TRUE,
+                      addClusterLabel = TRUE)
+
+```
+
+
+## Session Information
+
+```{r}
+sessionInfo()
+```
+
