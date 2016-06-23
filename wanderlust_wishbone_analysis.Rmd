@@ -5,20 +5,266 @@ date: "21 June 2016"
 output: 
   html_document:
     toc: true
-    toc_depth: 2
+    toc_depth: 3
 ---
 
-## Analysis on subsample 1
+> Wishbone python module is installed from [wishbone github](https://github.com/ManuSetty/wishbone/tree/develop), development branch (version 0.2.4).
 
-Wishbone python module is installed from [wishbone github](https://github.com/ManuSetty/wishbone/tree/develop), development branch (version 0.2.4).
-
-```{r}
+```{r, include=FALSE}
 require(plotly)
 require(ggplot2)
 require(ggrepel)
 ## set this to your correct path
 setwd("/Users/chenhao/GitProject/cytofkit_data_codes/")
+```
 
+## Analysis on CD14negCD19neg PBMC data
+
+```{r}
+data_tsne_cluster <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_exprs_tsne_cluster.csv", header = TRUE, row.names = 1, check.names = FALSE)
+
+data <- data_tsne_cluster[,1:36]
+write.csv(data, file = "./runWishbone/130515_C2_stim_CD19-_exprsData.csv")
+```
+
+### Using yd Vd2+ as starting cell
+
+### Run wishbone and wanderlust
+
+```{r engine='python', highlight=TRUE, eval=FALSE}
+import wishbone
+
+import os
+import pandas as pd
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import seaborn as sns
+import random
+
+scdata = wishbone.wb.SCData.from_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData.csv", data_type='masscyt', normalize=False)
+
+scdata.run_diffusion_map()
+
+scdata.diffusion_eigenvalues
+#          0
+# 0  1.000000
+# 1  0.998719
+# 2  0.996607
+# 3  0.994859
+# 4  0.994749
+# 5  0.993862
+# 6  0.993038
+# 7  0.991455
+# 8  0.991046
+# 9  0.989743
+
+cell = pd.DataFrame.from_csv('/Users/chenhao/GitProject/cytofkit_data_codes/CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_exprs_tsne_cluster.csv')
+
+start_cell = scdata.data.index[cell['ClusterX'] == 11][0]  ## Using yd Vd2+ as starting cell
+
+wb = wishbone.wb.Wishbone(scdata)
+## run wishbone
+wb.run_wishbone(start_cell, components_list=[1, 2, 3], num_waypoints=150)
+
+dfmap = scdata.diffusion_eigenvectors.copy()
+dfmap.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData_diffusionmap.csv", sep='\t', encoding='utf-8')
+
+trajectory = wb.trajectory.copy()
+trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData_wishbone_trajectory.csv", sep='\t', encoding='utf-8')
+
+branches = wb.branch.copy()
+branches.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData_wishbone_branches.csv", sep='\t', encoding='utf-8')
+
+## run wanderlust
+wb.run_wishbone(start_cell, components_list=[1, 2, 3], num_waypoints=150, branch = False)
+trajectory = wb.trajectory.copy()
+trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData_wanderlust_trajectory.csv", sep='\t', encoding='utf-8')
+```
+
+### Plot results
+
+```{r}
+wishbone_trajectory <- read.csv("./runWishbone/130515_C2_stim_CD19-_exprsData_wishbone_trajectory.csv",
+                                sep = "\t", header = FALSE, row.names = 1)
+wishbone_branches <- read.csv("./runWishbone/130515_C2_stim_CD19-_exprsData_wishbone_branches.csv", 
+                              sep="\t", header = FALSE, row.names = 1)
+wanderlust_trajectory <- read.csv("./runWishbone/130515_C2_stim_CD19-_exprsData_wanderlust_trajectory.csv",
+                                  sep = "\t", header = FALSE, row.names = 1)
+
+diffMap <- read.csv("./runWishbone/130515_C2_stim_CD19-_exprsData_diffusionmap.csv", 
+                    sep = "\t", header = TRUE, row.names = 1)
+
+data <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_exprs_tsne_cluster.csv",
+                 header = TRUE, row.names = 1, check.names = FALSE)
+
+data$trajectory <- wishbone_trajectory[,1]
+data$branches <- factor(wishbone_branches[,1])
+data$wanderlust <- wanderlust_trajectory[,1]
+data$cluster <- factor(data$ClusterX)
+diffMap <- diffMap[,2:4]
+colnames(diffMap) <- paste("diffusionmap", 1:3, sep="_")
+data <- cbind(data, diffMap)
+clusterName <- c("CD4 CM", "CD4 Naive", "CD4 Eff", "Less diff gd", "CD4 EM", "CD8 Naive", "MAIT", "CD8 EM", "NK", "Late CD4 Eff", "gd Vd2+", "CD8 Eff", "NK", "gd Vd2-", "NKT")
+data$clusterLabel <- clusterName[data$cluster]
+
+dataCentre <- aggregate(cbind(diffusionmap_1, diffusionmap_2) ~ clusterLabel, data, median)
+ggplot(data, aes(x=diffusionmap_1, y=diffusionmap_2, colour = trajectory)) + 
+    geom_point(size = 3) + theme_bw() +
+    scale_color_gradient2(low="blue", mid = "lightgreen", high = "yellow", midpoint = 0.5) +
+    geom_text_repel(data=dataCentre, label= dataCentre$clusterLabel, 
+                    colour = "black", size = 3, fontface = 'bold', 
+                    segment.color = 'red', segment.size = 0.6, 
+                    arrow = arrow(length = unit(0.01, 'npc')), force = 1)
+ 
+dataCentre2 <- aggregate(cbind(trajectory, branches) ~ clusterLabel, data, median)
+ggplot(data, aes(x=trajectory, y=branches, colour = trajectory)) + 
+    geom_point(size = 3) + theme_bw() +
+    scale_color_gradient2(low="blue", mid = "lightgreen", high = "yellow", midpoint = 0.5) +
+    geom_text_repel(data=dataCentre2, label= dataCentre$clusterLabel, 
+                    colour = "black", size = 3, fontface = 'bold', 
+                    segment.color = 'red', segment.size = 0.6, 
+                    arrow = arrow(length = unit(0.01, 'npc')), force = 1)
+
+data$wanderlustPath <- factor(1)
+dataCentre3 <- aggregate(cbind(wanderlust, wanderlustPath) ~ clusterLabel, data, median)
+ggplot(data, aes(x=wanderlust, y=wanderlustPath, colour = wanderlust)) + 
+    geom_point(size = 3) + theme_bw() +
+    scale_color_gradient2(low="blue", mid = "lightgreen", high = "yellow", midpoint = 0.5) +
+    geom_text_repel(data=dataCentre3, label= dataCentre$clusterLabel, 
+                    colour = "black", size = 3, fontface = 'bold', 
+                    segment.color = 'red', segment.size = 0.6, 
+                    arrow = arrow(length = unit(0.01, 'npc')), force = 1)
+
+plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
+        group = cluster, type = "scatter2d", mode = "markers")
+
+plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
+        group = branches, type = "scatter2d", mode = "markers")
+
+plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
+        color = trajectory, type = "scatter2d", mode = "markers")
+
+plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
+        color = wanderlust, type = "scatter2d", mode = "markers")
+```
+
+### Using CD4 Naive as starting cell
+
+### Run wishbone and wanderlust
+
+```{r engine='python', highlight=TRUE, eval=FALSE}
+scdata = wishbone.wb.SCData.from_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData.csv", data_type='masscyt', normalize=False)
+
+scdata.run_diffusion_map()
+
+scdata.diffusion_eigenvalues
+#          0
+# 0  1.000000
+# 1  0.998719
+# 2  0.996607
+# 3  0.994859
+# 4  0.994749
+# 5  0.993862
+# 6  0.993038
+# 7  0.991455
+# 8  0.991046
+# 9  0.989743
+
+cell = pd.DataFrame.from_csv('/Users/chenhao/GitProject/cytofkit_data_codes/CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_exprs_tsne_cluster.csv')
+
+start_cell = scdata.data.index[cell['ClusterX'] == 2][0]  ## Using CD4 Naive as starting cell
+
+wb = wishbone.wb.Wishbone(scdata)
+## run wishbone
+wb.run_wishbone(start_cell, components_list=[1, 2, 3], num_waypoints=150)
+
+dfmap = scdata.diffusion_eigenvectors.copy()
+dfmap.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData_diffusionmap1.csv", sep='\t', encoding='utf-8')
+
+trajectory = wb.trajectory.copy()
+trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData_wishbone_trajectory1.csv", sep='\t', encoding='utf-8')
+
+branches = wb.branch.copy()
+branches.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData_wishbone_branches1.csv", sep='\t', encoding='utf-8')
+
+## run wanderlust
+wb.run_wishbone(start_cell, components_list=[1, 2, 3], num_waypoints=150, branch = False)
+trajectory = wb.trajectory.copy()
+trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_exprsData_wanderlust_trajectory1.csv", sep='\t', encoding='utf-8')
+```
+
+### Plot results
+
+```{r}
+wishbone_trajectory <- read.csv("./runWishbone/130515_C2_stim_CD19-_exprsData_wishbone_trajectory1.csv",
+                                sep = "\t", header = FALSE, row.names = 1)
+wishbone_branches <- read.csv("./runWishbone/130515_C2_stim_CD19-_exprsData_wishbone_branches1.csv", 
+                              sep="\t", header = FALSE, row.names = 1)
+wanderlust_trajectory <- read.csv("./runWishbone/130515_C2_stim_CD19-_exprsData_wanderlust_trajectory1.csv",
+                                  sep = "\t", header = FALSE, row.names = 1)
+
+diffMap <- read.csv("./runWishbone/130515_C2_stim_CD19-_exprsData_diffusionmap1.csv", 
+                    sep = "\t", header = TRUE, row.names = 1)
+
+data <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_exprs_tsne_cluster.csv",
+                 header = TRUE, row.names = 1, check.names = FALSE)
+
+data$trajectory <- wishbone_trajectory[,1]
+data$branches <- factor(wishbone_branches[,1])
+data$wanderlust <- wanderlust_trajectory[,1]
+data$cluster <- factor(data$ClusterX)
+diffMap <- diffMap[,2:4]
+colnames(diffMap) <- paste("diffusionmap", 1:3, sep="_")
+data <- cbind(data, diffMap)
+clusterName <- c("CD4 CM", "CD4 Naive", "CD4 Eff", "Less diff gd", "CD4 EM", "CD8 Naive", "MAIT", "CD8 EM", "NK", "Late CD4 Eff", "gd Vd2+", "CD8 Eff", "NK", "gd Vd2-", "NKT")
+data$clusterLabel <- clusterName[data$cluster]
+
+dataCentre <- aggregate(cbind(diffusionmap_1, diffusionmap_2) ~ clusterLabel, data, median)
+ggplot(data, aes(x=diffusionmap_1, y=diffusionmap_2, colour = trajectory)) + 
+    geom_point(size = 3) + theme_bw() +
+    scale_color_gradient2(low="blue", mid = "lightgreen", high = "yellow", midpoint = 0.5) +
+    geom_text_repel(data=dataCentre, label= dataCentre$clusterLabel, 
+                    colour = "black", size = 3, fontface = 'bold', 
+                    segment.color = 'red', segment.size = 0.6, 
+                    arrow = arrow(length = unit(0.01, 'npc')), force = 1)
+ 
+dataCentre2 <- aggregate(cbind(trajectory, branches) ~ clusterLabel, data, median)
+ggplot(data, aes(x=trajectory, y=branches, colour = trajectory)) + 
+    geom_point(size = 3) + theme_bw() +
+    scale_color_gradient2(low="blue", mid = "lightgreen", high = "yellow", midpoint = 0.5) +
+    geom_text_repel(data=dataCentre2, label= dataCentre$clusterLabel, 
+                    colour = "black", size = 3, fontface = 'bold', 
+                    segment.color = 'red', segment.size = 0.6, 
+                    arrow = arrow(length = unit(0.01, 'npc')), force = 1)
+
+data$wanderlustPath <- factor(1)
+dataCentre3 <- aggregate(cbind(wanderlust, wanderlustPath) ~ clusterLabel, data, median)
+ggplot(data, aes(x=wanderlust, y=wanderlustPath, colour = wanderlust)) + 
+    geom_point(size = 3) + theme_bw() +
+    scale_color_gradient2(low="blue", mid = "lightgreen", high = "yellow", midpoint = 0.5) +
+    geom_text_repel(data=dataCentre3, label= dataCentre$clusterLabel, 
+                    colour = "black", size = 3, fontface = 'bold', 
+                    segment.color = 'red', segment.size = 0.6, 
+                    arrow = arrow(length = unit(0.01, 'npc')), force = 1)
+
+plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
+        group = cluster, type = "scatter2d", mode = "markers")
+
+plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
+        group = branches, type = "scatter2d", mode = "markers")
+
+plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
+        color = trajectory, type = "scatter2d", mode = "markers")
+
+plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
+        color = wanderlust, type = "scatter2d", mode = "markers")
+```
+
+
+## Analysis on subsample 1
+
+```{r}
 subsample1 <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_subsample1_isomap.csv",
                        header = TRUE, row.names = 1)
 write.csv(subsample1[,1:36], file = "./runWishbone/130515_C2_stim_CD19-_subsample1_isomap_data.csv")
@@ -33,6 +279,8 @@ subsample3 <- read.csv("./CD14negCD19negPBMC_dataset/130515_C2_stim_CD19-_subsam
 write.csv(subsample3[,1:36], file = "./runWishbone/130515_C2_stim_CD19-_subsample3_isomap_data.csv")
 
 ```
+
+### Run wishbone and wanderlust
 
 ```{r engine='python', highlight=TRUE, eval=FALSE}
 ## wishbone analysis using python 3.4
@@ -90,7 +338,7 @@ trajectory = wb.trajectory.copy()
 trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_subsample1_wanderlust_trajectory.csv", sep='\t', encoding='utf-8')
 ```
 
-
+### Plot results
 
 ```{r}
 wishbone_trajectory <- read.csv("./runWishbone/130515_C2_stim_CD19-_subsample1_wishbone_trajectory.csv",
@@ -166,6 +414,8 @@ ggplot(data, aes(x=diffusionmap_1, y=diffusionmap_2, colour = wanderlust)) +
 
 ## Analysis on subsample 2
 
+### Run wishbone and wanderlust
+
 ```{r engine='python', highlight=TRUE, eval=FALSE}
 ## wishbone analysis using python 3.4
 ## analysis on 130515_C2_stim_CD19-_subsample2_tsne.csv
@@ -212,7 +462,7 @@ trajectory = wb.trajectory.copy()
 trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_subsample2_wanderlust_trajectory.csv", sep='\t', encoding='utf-8')
 ```
 
-
+### Plot results
 
 ```{r}
 wishbone_trajectory <- read.csv("./runWishbone/130515_C2_stim_CD19-_subsample2_wishbone_trajectory.csv",
@@ -288,6 +538,8 @@ ggplot(data, aes(x=diffusionmap_1, y=diffusionmap_2, colour = wanderlust)) +
 
 ## Analysis on subsample 3
 
+### Run wishbone and wanderlust
+
 ```{r engine='python', highlight=TRUE, eval=FALSE}
 ## wishbone analysis using python 3.4
 ## analysis on 130515_C2_stim_CD19-_subsample3_tsne.csv
@@ -334,6 +586,7 @@ trajectory = wb.trajectory.copy()
 trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/130515_C2_stim_CD19-_subsample3_wanderlust_trajectory.csv", sep='\t', encoding='utf-8')
 ```
 
+### Plot results
 
 ```{r}
 wishbone_trajectory <- read.csv("./runWishbone/130515_C2_stim_CD19-_subsample3_wishbone_trajectory.csv",
@@ -410,6 +663,8 @@ ggplot(data, aes(x=diffusionmap_1, y=diffusionmap_2, colour = wanderlust)) +
 
 ## Analysis on diffusion map data
 
+### Run wishbone and wanderlust
+
 ```{r engine='python', highlight=TRUE, eval=FALSE}
 ## wishbone analysis using python 3.4
 ## analysis on diffusion map data
@@ -453,7 +708,7 @@ trajectory = wb.trajectory.copy()
 trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/subset_downsample_500_dfmap_data_wanderlust_trajectory.csv", sep='\t', encoding='utf-8')
 ```
 
-
+### Plot results
 
 ```{r}
 wishbone_trajectory <- read.csv("./runWishbone/subset_downsample_500_dfmap_data_wishbone_trajectory.csv",
@@ -517,6 +772,8 @@ plot_ly(data, x = diffusionmap_1, y = diffusionmap_2,
 
 ## Analysis on ISOMAP progression data 
 
+### Run wishbone and wanderlust
+
 ```{r engine='python', highlight=TRUE, eval=FALSE}
 ## wishbone analysis using python 3.4
 ## analysis on ISOMAP progression data 
@@ -560,6 +817,7 @@ trajectory = wb.trajectory.copy()
 trajectory.to_csv("/Users/chenhao/GitProject/cytofkit_data_codes/runWishbone/subset_downsample_500_isomap_data_wanderlust_trajectory.csv", sep='\t', encoding='utf-8')
 ```
 
+### Plot results
 
 ```{r}
 wishbone_trajectory <- read.csv("./runWishbone/subset_downsample_500_isomap_data_wishbone_trajectory.csv",
