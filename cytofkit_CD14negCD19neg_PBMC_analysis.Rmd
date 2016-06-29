@@ -99,6 +99,41 @@ cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster =
 cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "DensVM", sampleLabel = FALSE)
 ```
 
+### FlowSOM cluster plot
+```{r}
+xdata <- data_tsne_cluster[,1:36]
+```
+
+```{r, cache=TRUE}
+FlowSOM_15 <- cytof_cluster(xdata = xdata, method = "FlowSOM", FlowSOM_k = 15)
+FlowSOM_14 <- cytof_cluster(xdata = xdata, method = "FlowSOM", FlowSOM_k = 14)
+FlowSOM_13 <- cytof_cluster(xdata = xdata, method = "FlowSOM", FlowSOM_k = 13)
+FlowSOM_10 <- cytof_cluster(xdata = xdata, method = "FlowSOM", FlowSOM_k = 10)
+FlowSOM_5 <- cytof_cluster(xdata = xdata, method = "FlowSOM", FlowSOM_k = 5)
+
+data_tsne_cluster$FlowSOM15 <- FlowSOM_15
+data_tsne_cluster$FlowSOM14 <- FlowSOM_14
+data_tsne_cluster$FlowSOM13 <- FlowSOM_13
+data_tsne_cluster$FlowSOM10 <- FlowSOM_10
+data_tsne_cluster$FlowSOM5 <- FlowSOM_5
+
+## FlowSOM cluster k = 15
+cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "FlowSOM15", sampleLabel = FALSE)
+
+## FlowSOM cluster k = 14
+cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "FlowSOM14", sampleLabel = FALSE)
+
+## FlowSOM cluster k = 13
+cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "FlowSOM13", sampleLabel = FALSE)
+
+## FlowSOM cluster k = 10
+cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "FlowSOM10", sampleLabel = FALSE)
+
+## FlowSOM cluster k = 5
+cytof_clusterPlot(data_tsne_cluster, xlab = "tsne_1", ylab = "tsne_2", cluster = "FlowSOM5", sampleLabel = FALSE)
+```
+
+
 
 ## Cluster heatmap plot
 
