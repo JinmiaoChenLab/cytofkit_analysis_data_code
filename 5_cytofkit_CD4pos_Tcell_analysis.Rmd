@@ -1,0 +1,92 @@
+---
+title: "cytofkit CD4+ T cell analysis"
+author: "Hao Chen"
+date: "5 July 2016"
+output: html_document
+---
+
+```{r}
+require(cytofkit)
+```
+
+
+## Merge expresssion data
+
+```{r, eval=FALSE}
+## down sample 10000 cells from each file using method ceil
+files <- list.files(path="./CD4posTcell_dataset/", 
+                    pattern = ".fcs$", full.names = TRUE)
+markers <- as.character(read.table("./CD4posTcell_dataset/parameter.txt", 
+                                   header = TRUE)[,1])
+xdata <- cytof_exprsMerge(fcsFiles = files, markers = markers,
+                          transformMethod = "autoLgcl", 
+                          mergeMethod = "ceil", fixedNum = 10000)
+```
+
+## Run t-SNE
+
+```{r, eval=FALSE}
+ydata <- cytof_dimReduction(data = xdata, method = "tsne")
+```
+
+## Clustering Analysis
+
+### ClusterX
+
+```{r, eval=FALSE}
+cx_cluster <- cytof_cluster(ydata = ydata, xdata = xdata, method = "ClusterX")
+```
+
+### DensVM
+
+```{r, eval=FALSE}
+dv_cluster <- cytof_cluster(ydata = ydata, xdata = xdata, method = "DensVM")
+```
+
+### PhenoGraph
+
+```{r, eval=FALSE}
+pg_cluster <- cytof_cluster(ydata = ydata, xdata = xdata, method = "Rphenograph")
+```
+
+## Clustering Plot
+
+```{r, eval=FALSE}
+aData <- cbind(xdata, ydata)
+aData$DensVM <- factor(dv_cluster)
+aData$ClusterX <- factor(cx_cluster)
+aData$PhenoGraph <- factor(pg_cluster)
+```
+
+```{r, include=FALSE}
+aData <- read.csv("./CD4posTcell_dataset/CD4_tsne_cluster.csv", 
+                  header = TRUE, row.names = 1, check.names = FALSE)
+```
+
+### ClusterX
+
+```{r}
+cytof_clusterPlot(data = aData, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "ClusterX", sampleLabel = FALSE)
+```
+
+
+### DensVM
+
+```{r}
+cytof_clusterPlot(data = aData, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "DensVM", sampleLabel = FALSE)
+```
+
+
+### PhenoGraph
+
+```{r}
+cytof_clusterPlot(data = aData, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "PhenoGraph", sampleLabel = FALSE)
+```
+
+
+
+
+

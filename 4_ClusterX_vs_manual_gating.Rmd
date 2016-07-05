@@ -1,0 +1,118 @@
+---
+title: "ClusterX vs Manual Gating"
+author: "Hao Chen"
+date: "5 July 2016"
+output: html_document
+---
+
+```{r}
+## Data (FlowRepository_FR-FCM-ZZPH_files) downloaded from FlowRepository 
+## https://flowrepository.org/experiments/817/download_ziped_files
+require(cytofkit)
+source("./FlowRepository_FR-FCM-ZZPH_files/helper_match_clusters_and_evaluate.R")
+```
+
+## Test on Levine\_2015\_marrow_13 dataset
+
+```{r, eval=FALSE}
+## LM13 cluster
+f13 <- read.FCS("./FlowRepository_FR-FCM-ZZPH_files/Levine_2015_marrow_13.fcs", transformation = FALSE)
+LM13 <- f13@exprs
+
+LM13_tsne <- cytof_dimReduction(data = LM13[ ,1:13], 
+                                method = "tsne", 
+                                tsneSeed = 113)
+LM13_ClusterX <- cytof_cluster(ydata = LM13_tsne, method = "ClusterX")
+LM13_res <- data.frame(LM13, LM13_tsne, ClusterX=LM13_ClusterX)
+```
+
+
+```{r, include=FALSE}
+LM13_res <- read.csv("./FlowRepository_FR-FCM-ZZPH_files/LM13_res.csv", 
+                     header = TRUE, row.names = 1)
+```
+
+
+
+```{r}
+## Evaluation of ClusterX on Levine_2015_marrow_13 dataset
+LM13_eval <- helper_match_clusters_and_evaluate(LM13_res$ClusterX, LM13_res$label)
+
+LM13_eval
+
+## mean F1
+mean(LM13_eval$F1)
+# 0.5692203
+
+#LM13_res$label[is.na(LM13_res$label)] <- 0   ## change NA to 0
+LM13_p1 <- cytof_clusterPlot(data = LM13_res[!is.na(LM13_res$label), ], 
+                             xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "label", type = 1, sampleLabel = FALSE, 
+                  title = "Gated Truth", labelRepel = TRUE)
+
+## Plot of manual gated populations on t-SNE
+print(LM13_p1)
+
+## Plot of ClusterX clustes on t-SNE
+LM13_p2 <- cytof_clusterPlot(data = LM13_res, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "ClusterX", type = 1, sampleLabel = FALSE, 
+                  title = "ClusterX", labelRepel = TRUE)
+print(LM13_p2)
+```
+
+
+## Test on Levine\_2015\_marrow_32 dataset
+
+```{r, eval=FALSE}
+## LM32 cluster
+f32 <- read.FCS("./FlowRepository_FR-FCM-ZZPH_files/Levine_2015_marrow_32.fcs", 
+                transformation = FALSE)
+LM32 <- f32@exprs
+
+LM32_tsne <- cytof_dimReduction(data = LM32[ ,5:36], 
+                                method = "tsne", 
+                                tsneSeed = 132)
+LM32_ClusterX <- cytof_cluster(ydata = LM32_tsne, method = "ClusterX")
+
+LM32_res <- data.frame(LM32, LM32_tsne, ClusterX=LM32_ClusterX)
+```
+
+```{r, include=FALSE}
+LM32_res <- read.csv("FlowRepository_FR-FCM-ZZPH_files/LM32_res.csv", 
+                     header = TRUE, row.names = 1)
+```
+
+
+```{r}
+## Evaluation of ClusterX on Levine_2015_marrow_32 dataset
+LM32_eval <- helper_match_clusters_and_evaluate(LM32_res$ClusterX, LM32_res$label)
+LM32_eval
+
+## mean F1
+mean(LM32_eval$F1)
+# 0.6740591
+
+#LM32_res$label[is.na(LM32_res$label)] <- 0   ## change NA to 0
+LM32_p1 <- cytof_clusterPlot(data = LM32_res[!is.na(LM32_res$label), ], 
+                             xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "label", type = 1, sampleLabel = FALSE, 
+                  title = "Gated Truth", labelRepel = TRUE)
+
+## Plot of manual gated populations on t-SNE
+print(LM32_p1)
+
+LM32_p2 <- cytof_clusterPlot(data = LM32_res, xlab = "tsne_1", ylab = "tsne_2", 
+                  cluster = "ClusterX", type = 1, sampleLabel = FALSE, 
+                  title = "ClusterX", labelRepel = TRUE)
+## Plot of ClusterX clustes on t-SNE
+print(LM32_p2)
+
+```
+
+
+## Session Information
+
+```{r}
+sessionInfo()
+```
+
